@@ -1,139 +1,106 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """
-read_write_heap.py - işləyən prosesin heap-indəki stringi tap və əvəz et
-İstifadə: sudo python3 read_write_heap.py <pid> <search_string> <replace_string>
+A script that reads and writes to heap
 """
 
 import sys
-import os
 
 
-def print_usage():
-    print("İstifadə: read_write_heap.py pid search_string replace_string")
-
-
-def find_heap(pid):
+def get_heap_bounds(pid):
     """
-    /proc/PID/maps faylından heap-in ünvan diapazonunu tap.
-    Qaytarır: (başlanğıc_ünvan, son_ünvan) və ya None
-    """
-    maps_file = f"/proc/{pid}/maps"
+    Retrieve the start and end addresses of the heap segment
+    for a given process.
 
+    Args:
+        pid (str): Process ID.
+
+    Returns:
+        tuple: Start and end addresses of the heap as integers.
+    """
     try:
-        with open(maps_file, "r") as f:
-            for line in f:
-                # Heap sətri "[heap]" ilə bitir
+        with open(f'/proc/{pid}/maps', 'r') as maps_file:
+            for line in maps_file:
                 if "[heap]" in line:
-                    # Format: "başlanğıc-son permissiyalar ... [heap]"
-                    # Misal: "555e646e0000-555e64701000 rw-p ... [heap]"
-                    addr_range = line.split()[0]
-                    start_str, end_str = addr_range.split("-")
-                    start = int(start_str, 16)
-                    end   = int(end_str,   16)
-                    print(f"[*] Heap tapıldı: 0x{start:x} → 0x{end:x}")
-                    print(f"[*] Heap ölçüsü : {end - start} bayt")
-                    return start, end
-    except PermissionError:
-        print(f"[!] Xəta: /proc/{pid}/maps oxumaq üçün icazə lazımdır (sudo?)")
+                    addr_range = line.split(' ')[0]
+                    start_str, end_str = addr_range.split('-')
+                    start_addr = int(start_str, 16)
+                    end_addr = int(end_str, 16)
+                    return start_addr, end_addr
+        print("Error: Heap segment not found.")
         sys.exit(1)
-    except FileNotFoundError:
-        print(f"[!] Xəta: PID {pid} tapılmadı. Proses işləyirmi?")
+    except Exception as e:
+        print(f"Exception in get_heap_bounds: {e}")
         sys.exit(1)
 
-    print("[!] Heap tapılmadı bu prosesdə.")
-    sys.exit(1)
 
+def read_heap_memory(pid, start_addr, end_addr):
+    """
+    Read the contents of a process's heap memory.
 
-def read_heap(pid, start, end):
-    """Heap sahəsini tam oxu, bytes qaytarır."""
-    mem_file = f"/proc/{pid}/mem"
-    heap_size = end - start
+    Args:
+        pid (str): Process ID.
+        start_addr (int): Start address of the heap.
+        end_addr (int): End address of the heap.
 
+    Returns:
+        bytes: Data read from the heap segment.
+    """
     try:
-        with open(mem_file, "rb") as f:
-            f.seek(start)
-            data = f.read(heap_size)
-        print(f"[*] Heap oxundu: {len(data)} bayt")
-        return data
-    except PermissionError:
-        print(f"[!] Xəta: /proc/{pid}/mem oxumaq üçün icazə lazımdır (sudo?)")
-        sys.exit(1)
-    except OSError as e:
-        print(f"[!] Yaddaş oxuma xətası: {e}")
+        with open(f'/proc/{pid}/mem', 'rb') as mem_file:
+            mem_file.seek(start_addr)
+            return mem_file.read(end_addr - start_addr)
+    except Exception as e:
+        print(f"Exception in read_heap_memory: {e}")
         sys.exit(1)
 
 
-def write_heap(pid, address, data):
-    """Heap-dəki müəyyən ünvana yeni data yaz."""
-    mem_file = f"/proc/{pid}/mem"
+def write_to_heap(pid, target_addr, data):
+    """
+    Write data to a specific address in the process's heap.
 
+    Args:
+        pid (str): Process ID.
+        target_addr (int): Memory address to write data to.
+        data (bytes): Data to be written.
+    """
     try:
-        with open(mem_file, "rb+") as f:
-            f.seek(address)
-            f.write(data)
-        print(f"[*] Yazıldı: {len(data)} bayt → ünvan 0x{address:x}")
-    except PermissionError:
-        print(f"[!] Xəta: /proc/{pid}/mem yazmaq üçün icazə lazımdır (sudo?)")
-        sys.exit(1)
-    except OSError as e:
-        print(f"[!] Yaddaş yazma xətası: {e}")
+        with open(f'/proc/{pid}/mem', 'rb+') as mem_file:
+            mem_file.seek(target_addr)
+            mem_file.write(data)
+    except Exception as e:
+        print(f"Exception in write_to_heap: {e}")
         sys.exit(1)
 
 
 def main():
-    # --- Argument yoxlaması ---
+    """
+    Main function to locate a string in the heap of a running process
+    and replace it with another string of equal or shorter length.
+    """
     if len(sys.argv) != 4:
-        print_usage()
+        print('Usage: read_write_heap.py <pid>\
+                <search_string> <replace_string>')
         sys.exit(1)
 
     try:
-        pid = int(sys.argv[1])
-    except ValueError:
-        print("[!] Xəta: pid tam ədəd olmalıdır.")
-        print_usage()
+        pid = sys.argv[1]
+        search_bytes = sys.argv[2].encode()
+        replacement_bytes = sys.argv[3]\
+            .encode().ljust(len(search_bytes), b'\x00')
+
+        heap_start, heap_end = get_heap_bounds(pid)
+        heap_data = read_heap_memory(pid, heap_start, heap_end)
+
+        offset = heap_data.find(search_bytes)
+        if offset == -1:
+            print("Error: Search string not found in heap.")
+            sys.exit(1)
+
+        write_address = heap_start + offset
+        write_to_heap(pid, write_address, replacement_bytes)
+    except Exception as e:
+        print(f"Exception in main: {e}")
         sys.exit(1)
-
-    search_str  = sys.argv[2]
-    replace_str = sys.argv[3]
-
-    search_bytes  = search_str.encode("ascii")
-    replace_bytes = replace_str.encode("ascii")
-
-    # Replace string daha uzun ola bilməz (heap-də yer yoxdur)
-    if len(replace_bytes) > len(search_bytes):
-        print(f"[!] Xəta: replace_string ({len(replace_bytes)} bayt) "
-              f"search_string-dən ({len(search_bytes)} bayt) uzun ola bilməz.")
-        sys.exit(1)
-
-    print(f"[*] PID         : {pid}")
-    print(f"[*] Axtarılan   : '{search_str}'")
-    print(f"[*] Əvəz edilən : '{replace_str}'")
-    print()
-
-    # --- Heap-i tap ---
-    heap_start, heap_end = find_heap(pid)
-
-    # --- Heap-i oxu ---
-    heap_data = read_heap(pid, heap_start, heap_end)
-
-    # --- String tap ---
-    offset = heap_data.find(search_bytes)
-    if offset == -1:
-        print(f"[!] '{search_str}' heap-də tapılmadı.")
-        sys.exit(1)
-
-    found_addr = heap_start + offset
-    print(f"[*] '{search_str}' tapıldı: ünvan 0x{found_addr:x} "
-          f"(heap başından +{offset} bayt)")
-
-    # --- Əvəz et (null terminator əlavə et, qalan baytları null ilə doldur) ---
-    # Misal: "Holberton"(9 bayt) → "maroua\0\0\0"(9 bayt)
-    padded = replace_bytes + b"\x00" * (len(search_bytes) - len(replace_bytes))
-
-    write_heap(pid, found_addr, padded)
-
-    print()
-    print(f"[+] Uğurlu! '{search_str}' → '{replace_str}' əvəz edildi.")
 
 
 if __name__ == "__main__":
