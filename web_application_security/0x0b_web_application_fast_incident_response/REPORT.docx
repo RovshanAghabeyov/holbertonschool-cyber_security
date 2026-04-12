@@ -1,0 +1,70 @@
+
+# Web Application Incident Report: Application-Layer Denial of Service (DoS) Attack
+
+## 1. Introduction
+This document serves as a comprehensive incident report detailing a recent Application-Layer Denial of Service (DoS) attack against the organization's web infrastructure. The attack temporarily degraded server performance and impacted legitimate user access. The purpose of this report is to analyze the attack vectors, document the findings, and propose an industry-standard mitigation strategy—specifically focusing on mechanisms to limit server usage to prevent future resource exhaustion.
+
+## 2. Detailed Attack Analysis
+An analysis of the server access logs during the incident window revealed a highly concentrated traffic spike originating from a single anomalous source. 
+
+### Attack Characteristics
+| Metric | Observation |
+| :--- | :--- |
+| **Attack Type** | HTTP Flood / Application-Layer DoS |
+| **Source IP** | Single IP Address (Anonymized: `[REDACTED-IP-1]`) |
+| **User-Agent** | `python-requests/2.31.0` |
+| **Targeted Endpoints** | Broad application endpoints and resource-intensive queries |
+| **Request Volume** | Sustained critical volume of requests exceeding standard capacity |
+
+**Tooling & Methodology:**
+The attacker utilized a custom-written Python script leveraging the popular `requests` library (indicated by the `python-requests/2.31.0` default User-Agent string). By not spoofing the User-Agent or distributing the attack across a botnet, the threat actor deployed a relatively unsophisticated but high-volume attack aimed at exhausting backend compute, thread pools, and database connections.
+
+## 3. Proposed Mitigation Strategy
+Based on the analysis, the primary vulnerability is the lack of strict traffic threshold controls. To directly address the core issue of limiting server usage, the proposed mitigation strategy is the implementation of **Strict IP-Based Rate Limiting** coupled with **WAF Automation Filtering**.
+
+* **Rate Limiting:** Restricting the number of HTTP requests a single IP address can make within a defined time window. This directly limits the usage of the server per client.
+* **Web Application Firewall (WAF) Rules:** Deploying WAF rules to block or challenge requests from anomalous, default, or headless User-Agents that do not execute JavaScript (like native Python scripts) on non-API endpoints.
+
+## 4. Justification for the Proposed Solution
+According to OWASP (Open Web Application Security Project) guidelines, rate limiting is a fundamental defense against automated threats and DoS attacks.
+* **Resource Preservation:** By limiting the usage of the server per client, the application guarantees fair use and ensures compute resources are not monopolized by a single rogue actor.
+* **Proportional Response:** It mitigates the attack dynamically without taking the application offline or affecting other legitimate users, unlike broad server shutdowns or null-routing whole subnets.
+* **Simplicity and Effectiveness:** A single IP attack using default automation headers is trivially defeated by enforcing a maximum request threshold, which is highly efficient when enforced at the edge network or reverse proxy level.
+
+## 5. Steps for Implementation
+The following steps outline the implementation of rate limiting at the reverse proxy (e.g., NGINX) and Web Application Firewall levels.
+
+### Step 1: Define Normal Traffic Baselines
+Analyze standard application usage via log aggregation to determine a reasonable request limit (e.g., 60 requests per minute for an average human user navigating the site).
+
+### Step 2: Implement Rate Limiting Rules (NGINX Example)
+Configure the edge server or load balancer to enforce these limits.
+
+```nginx
+# Define the rate limit zone mapping by client IP
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=60r/m;
+
+server {
+    location / {
+        # Apply the rate limit, allowing a small burst but no delay for valid traffic
+        limit_req zone=api_limit burst=20 nodelay;
+        
+        # Return HTTP 429 Too Many Requests when limit is exceeded
+        limit_req_status 429;
+        
+        proxy_pass http://backend_upstream;
+    }
+}
+```
+
+### Step 3: Implement WAF User-Agent Restrictions
+Create a rule in the WAF or API gateway to block explicit automation headers (like `python-requests/*`) on frontend, human-facing endpoints. This forces attackers to at least spoof legitimate browsers, which can then be challenged by CAPTCHAs or JavaScript challenges.
+
+## 6. Post-Implementation Monitoring
+Continuous monitoring is required to ensure the mitigation does not impact legitimate users and to identify adaptive attackers.
+1.  **Log Aggregation:** Route access logs and WAF logs to a centralized SIEM (e.g., Splunk, ELK Stack).
+2.  **Alerting:** Configure alerts for high frequencies of `HTTP 429 Too Many Requests` or `HTTP 403 Forbidden` status codes, which indicates the rate limiter or WAF is actively blocking an IP.
+3.  **Performance Metrics:** Monitor overall server CPU, memory, and concurrent connection metrics to verify the effectiveness of the rate limits in keeping server usage within safe operational bounds.
+
+## 7. Conclusion
+The recent DoS attack successfully highlighted a missing defensive layer in our web application architecture: the lack of request rate controls. By identifying the specific threat actor profile (a single IP utilizing `python-requests/2.31.0`), we have formulated a targeted and highly effective remediation strategy. Implementing strict rate controls and WAF filtering will directly limit abuse of server resources, fortifying the organization's infrastructure against similar automated attacks in the future.
