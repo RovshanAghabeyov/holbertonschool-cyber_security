@@ -8,6 +8,6 @@ def merge_json_files(file1_path, file2_path)
 
     merge = file1_data + file2_data
 
-    File.write(file2_path, JSON.pretty_genrate(merge))
-    puts "merged file is #{file2_data}"
+    File.write(file2_path, JSON.pretty_generate(merge))
+    puts "Merged JSON written to  #{file2_data}"
 end
