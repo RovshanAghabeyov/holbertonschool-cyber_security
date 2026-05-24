@@ -1,10 +1,10 @@
 class HelloWorld
     def initialize
-    	@massage="Hello, World!"
+    	@message="Hello, World!"
     end
 
     def print_hello
-        puts  @massage
+        puts  @message
     end
  
     
