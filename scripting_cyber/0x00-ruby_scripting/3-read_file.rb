@@ -10,7 +10,7 @@ def count_user_ids(path)
   end
    
   counts.each do |user_id, count|
-    puts "#{userid}: #{usercount}"
+    puts "#{userid}: #{count}"
   end
 end 
 
