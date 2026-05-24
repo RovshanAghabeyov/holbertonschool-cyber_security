@@ -3,15 +3,15 @@ require 'json'
 def count_user_ids(path)
   file = File.read(path)
   data = JSON.parse(file)
+
   counts = Hash.new(0)
 
   data.each do |item|
-	counts[item["userid"]] +=1
+    counts[item["userId"]] += 1
   end
-   
-  counts.each do |userid, count|
-	puts "#{userid}: #{count}"
-  end
-end 
 
+  counts.each do |user_id, count|
+    puts "#{user_id}: #{count}"
+  end
+end
 
