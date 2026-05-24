@@ -6,11 +6,11 @@ def count_user_ids(path)
   counts = Hash.new(0)
 
   data.each do |item|
-    counts[item["userid"]] +=1
+	counts[item["userid"]] +=1
   end
    
   counts.each do |user_id, count|
-    puts "#{userid}: #{count}"
+	puts "#{userid}: #{count}"
   end
 end 
 
