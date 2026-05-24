@@ -1,11 +1,10 @@
 class HelloWorld
-    def initialize(msg="Hello, World!")
-    	&commat;massage= msg
+    def initialize
+    	@massage="Hello, World!"
     end
 
     def print_hello
-        &commat;massage
-        puts "#{massage} "
+        puts  @massage
     end
  
     
